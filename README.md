@@ -49,49 +49,20 @@ python analysis/statistical_analysis.py
 
 ## Results
 
-Figures below are ASCII sketches of what `analysis/statistical_analysis.py`
-actually plots (real PNGs land in `figures/` when you run it, I'm redrawing
-the final versions by hand for the write-up, these are just the data blocked
-out).
+All figures below are generated directly by `analysis/statistical_analysis.py`,
+seeded (`RNG_SEED = 42`) so the numbers are reproducible. Run the script
+again and you get the same plots and the same CSVs in `results/`.
 
 ### BER tracks theory on both channel models
 
-BSC, empirical BER vs. `p` (they should sit right on top of each other,
-since the flip channel *is* a BSC by construction):
+BSC, empirical BER vs. `p` (they sit right on top of each other, since the
+flip channel *is* a BSC by construction):
 
-```
-BER
-0.05 |                                                    o
-0.04 |                                          o
-0.03 |                                o
-0.02 |                      o
-0.01 |            o
-0.00 o----------------------------------------------------------
-     0.00       0.01       0.02       0.03       0.04       0.05
-                              p (flip probability)
+![BER vs p, BSC channel](figures/ber_vs_p_flip.png)
 
-     o = empirical      dashed = theoretical (BER = p)
-     measured: p=0.01 -> BER=0.00994 | p=0.03 -> BER=0.03005 | p=0.05 -> BER=0.05009
-```
+AWGN, empirical vs. `Q(√(2·Eb/N0))`, log scale, the classic waterfall curve:
 
-AWGN, empirical vs. `Q(√(2·Eb/N0))`, log scale, the classic waterfall:
-
-```
-BER (log)
-1e-1 |o
-     |  o
-1e-2 |    o
-     |       o
-1e-3 |          o
-     |             o
-1e-4 |                o
-1e-5 |                   o
-     +--------------------------------------------------
-      -2   0    2    4    6    8   10   Eb/N0 (dB)
-
-     measured: 0dB -> 0.0790 | 4dB -> 0.01247 | 8dB -> 0.000186 | 10dB -> 0.0000054
-     theory:   0dB -> 0.0786 | 4dB -> 0.01250 | 8dB -> 0.000191 | 10dB -> 0.0000039
-```
+![BER vs Eb/N0, AWGN channel](figures/ber_vs_ebn0_awgn.png)
 
 Both track theory closely enough that I trust the modem and channel code.
 If there were a bug in the modulation or noise injection, this is exactly
@@ -103,23 +74,7 @@ A frame only survives if every single bit in it survives, so a small p
 turns into a much bigger frame loss number. This is the plot that justifies
 adding FEC in V0.4.
 
-```
-Frame
-Error
-Rate
-1.0  |                    o---o---o---o---o---o
-     |               o
-0.8  |
-     |          o
-0.6  |
-0.4  |      o
-0.2  | o
-0.0  o------------------------------------------
-     0.00  0.01  0.02  0.03  0.04  0.05
-                    p (flip probability)
-
-     224-bit frame: p=0.005 -> FER≈0.90 | p=0.01 -> FER≈0.99 | p=0.02 -> FER≈1.00
-```
+![Frame error rate vs p](figures/frame_error_rate.png)
 
 ### CRC-8 catches almost everything, not everything
 
@@ -127,42 +82,14 @@ Roughly 1 in 256 corrupted frames should slip past the CRC check by pure
 chance (`2^-8`). The empirical rate bounces around that line, which is
 what you'd expect from a rare-event estimate over a few thousand trials.
 
-```
-P(CRC passes | corrupted)
-0.005 |        o        o
-      |    o        o       o    o    o
-0.004 |------------------------------------- 1/256 ≈ 0.0039
-      |  o                              o
-0.003 |
-0.000 o-----------------------------------------
-      0.00  0.01  0.02  0.03  0.04  0.05
-                    p (flip probability)
-```
+![CRC-8 miss-detection rate](figures/crc_miss_detection.png)
 
 ### Frame success collapses as payload grows
 
 Same channel quality, longer frame, worse odds. A direct, visual case for
 keeping frames short or adding coding.
 
-```
-payload
-length
-(bytes)
- 96 |  X    .    .    .    .    .    .    .    .
- 64 |  X    .    .    .    .    .    .    .    .
- 32 |  X    x    .    .    .    .    .    .    .
- 16 |  X    x    x    .    .    .    .    .    .
-  4 |  X    X    x    .    .    .    .    .    .
-    +--------------------------------------------
-     0.00  0.01  0.02  0.03  ...              0.08
-                p (flip probability)
-
-     X = high success   x = partial   . = near-zero success
-```
-
-All of these come from `analysis/statistical_analysis.py`, seeded
-(`RNG_SEED = 42`) so the numbers are reproducible. Run it again and you
-get the same CSVs in `results/`.
+![Frame success rate, payload length vs p](figures/summary_heatmap.png)
 
 ## Repository layout
 
