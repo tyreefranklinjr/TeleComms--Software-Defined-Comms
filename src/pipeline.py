@@ -30,20 +30,24 @@ class TrialResult:
 def run_trial(
     payload: str,
     sequence: int = 0,
-    channel: str = "flip",
+    channel: str = "none",
     p_error: float = 0.0,
     eb_n0_db: float = 10.0,
     rng: Optional[random.Random] = None,
 ) -> TrialResult:
     """
     Run one full transmit -> channel -> receive cycle and score the outcome.
-    channel: "flip" (BSC, parameterized by p_error) or "awgn" (parameterized
-    by eb_n0_db).
+
+    channel: "none" (ideal, no-op, default), "flip" (BSC, parameterized by
+    p_error), or "awgn" (parameterized by eb_n0_db). Noise is opt-in, not
+    required, the core framing/CRC path is fully exercised with channel="none".
     """
     tx_bits = build_frame(payload, sequence)
     symbols = modulate(tx_bits)
 
-    if channel == "flip":
+    if channel == "none":
+        rx_symbols = symbols
+    elif channel == "flip":
         rx_symbols = flip_channel(symbols, p_error, rng=rng)
     elif channel == "awgn":
         rx_symbols = awgn_channel(symbols, eb_n0_db, rng=rng)
