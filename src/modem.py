@@ -25,6 +25,7 @@ from __future__ import annotations
 import math
 import random
 from typing import List
+import numpy as np
 
 
 def modulate(bits: str) -> List[float]:
@@ -62,3 +63,61 @@ def theoretical_ber_awgn(eb_n0_db: float) -> float:
     """Closed-form BPSK bit-error rate over AWGN: Q(sqrt(2*Eb/N0))."""
     eb_n0_linear = 10 ** (eb_n0_db / 10)
     return 0.5 * math.erfc(math.sqrt(eb_n0_linear))
+
+def upsample(symbols: np.ndarray, sps: int) -> np.ndarray:
+    """
+    Inserts (sps - 1) zeros between each symbol for pulse shaping.
+    """
+    out = np.zeros(len(symbols) * sps, dtype=complex)
+    out[::sps] = symbols
+    return out
+
+def rrcosfilter(num_taps: int, alpha: float, sps: int) -> np.ndarray:
+    """
+    Generates a Root-Raised-Cosine (RRC) filter impulse response.
+    num_taps must be an odd integer to maintain symmetry.
+    """
+    if num_taps % 2 == 0:
+        raise ValueError("num_taps must be an odd integer for symmetry.")
+        
+    half_taps = num_taps // 2
+    t = np.arange(-half_taps, half_taps + 1, dtype=float)
+    h = np.zeros(num_taps, dtype=float)
+    
+    idx_zero = np.where(t == 0.0)
+    h[idx_zero] = (1.0 - alpha + (4.0 * alpha / np.pi)) / np.sqrt(sps)
+    
+    if alpha != 0:
+        threshold = np.abs(t) == (sps / (4.0 * alpha))
+        if np.any(threshold):
+            term = (alpha / np.sqrt(2.0 * sps))
+            val = (1.0 + 2.0 / np.pi) * np.sin(np.pi / (4.0 * alpha)) + \
+                  (1.0 - 2.0 / np.pi) * np.cos(np.pi / (4.0 * alpha))
+            h[threshold] = term * val
+            
+    normal_indices = np.where((t != 0.0) & (np.abs(t) != (sps / (4.0 * alpha) if alpha != 0 else -1)))
+    if alpha == 0:
+        tn = t[normal_indices] / sps
+        h[normal_indices] = np.sin(np.pi * tn) / (np.pi * tn) / np.sqrt(sps)
+    else:
+        tn = t[normal_indices] / sps
+        numerator = np.sin(np.pi * tn * (1.0 - alpha)) + \
+                    4.0 * alpha * tn * np.cos(np.pi * tn * (1.0 + alpha))
+        denominator = np.pi * tn * (1.0 - (4.0 * alpha * tn)**2)
+        h[normal_indices] = numerator / denominator / np.sqrt(sps)
+        
+    # Normalize filter energy
+    h = h / np.sqrt(np.sum(h**2))
+    return h
+
+def modulate_bpsk_rrc(symbols: np.ndarray, sps: int = 8, num_taps: int = 33, alpha: float = 0.35) -> np.ndarray:
+    """
+    Full V0.4 BPSK modulation pipeline:
+    1. Converts complex/real symbols via upsampling (zero-stuffing).
+    2. Generates RRC filter coefficients.
+    3. Convolves the upsampled stream with the filter to produce a band-limited waveform.
+    """
+    upsampled = upsample(symbols, sps)
+    h = rrcosfilter(num_taps, alpha, sps)
+    waveform = np.convolve(upsampled, h, mode='full')
+    return waveform

@@ -40,7 +40,7 @@ def run_trial(
 
     channel: "none" (ideal, no-op, default), "flip" (BSC, parameterized by
     p_error), or "awgn" (parameterized by eb_n0_db). Noise is opt-in, not
-    required, the core framing/CRC path is fully exercised with channel="none".
+    required, the core framing/CRC path is fully exercised with channel="none". 
     """
     tx_bits = build_frame(payload, sequence)
     symbols = modulate(tx_bits)
