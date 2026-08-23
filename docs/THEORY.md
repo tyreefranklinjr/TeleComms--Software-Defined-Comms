@@ -199,3 +199,95 @@ gap further, at the cost of more compute per sample. Reporting that gap
 instead of picking parameters that hide it is the same standard the rest
 of this repo holds itself to (see section 1.2 for the same kind of
 small-sample honesty on the unshaped AWGN sweep).
+
+## 6. QPSK vs. BPSK: same BER, half the bandwidth
+
+BPSK carries 1 bit per symbol. QPSK carries 2, by using four
+constellation points (one per quadrant of the complex plane) instead of
+two. The obvious question: doesn't packing more bits into each symbol
+make each symbol more fragile, and cost you in error rate?
+
+### 6.1 Why Gray coding is what saves QPSK from that cost
+
+`modulate_qpsk` maps bit pairs to constellation points using a **Gray
+code**: `00`, `01`, `11`, `10` assigned so that every pair of
+*adjacent* quadrants differs in exactly one bit position. This matters
+because under noise, the most likely mistake a receiver makes isn't
+landing in the opposite quadrant (that requires the noise to overcome a
+lot of signal margin), it's landing in a *neighboring* quadrant (a
+smaller push in one dimension). With Gray coding, that most-likely
+mistake costs exactly one bit, not two.
+
+That's the mechanism behind a real, checkable claim: **Gray-coded QPSK
+has the same per-bit BER as BPSK at the same Eb/N0**, despite carrying
+twice the bits per symbol.
+
+```
+BER_theoretical_QPSK(Eb/N0) = BER_theoretical_BPSK(Eb/N0) = Q(√(2·Eb/N0))
+```
+
+implemented as `theoretical_ber_qpsk`, which is literally just
+`theoretical_ber_awgn` under a different name, the formula doesn't
+change, only the justification for why it still applies does.
+
+### 6.2 Making the comparison fair: noise scaling by bits/symbol
+
+Comparing two schemes at "the same Eb/N0" only works if the noise model
+actually holds energy-per-*bit* constant, not energy-per-*symbol*. QPSK
+symbols are normalized to unit energy (`|symbol|² = 1`, same convention
+BPSK uses), but each QPSK symbol carries 2 bits, so at fixed symbol
+energy each *bit* only gets half the energy a BPSK bit gets. The noise
+has to be scaled down to match, or the comparison would be measuring
+"QPSK with weaker signal" instead of "QPSK at the same Eb/N0".
+
+`awgn_channel_complex(symbols, eb_n0_db, bits_per_symbol)` handles this
+generally: given `Es = bits_per_symbol · Eb` and unit average symbol
+energy, the per-dimension (I and Q) noise variance works out to
+
+```
+sigma^2 = 1 / (2 · bits_per_symbol · Eb/N0_linear)
+```
+
+At `bits_per_symbol=1` this is exactly the same formula the original
+real-valued `awgn_channel` already used for BPSK (checked directly in
+`tests/test_qpsk.py`), so the two channel models agree at the point
+where they should, and only diverge because QPSK is actually carrying
+more bits per symbol, not because of an inconsistent noise definition.
+
+### 6.3 What the sweep actually shows
+
+`analysis/qpsk_vs_bpsk_analysis.py` runs both schemes through this same
+channel model, 100 trials per Eb/N0 point, 2000 bits per trial, 0 to
+10 dB:
+
+```
+figures/ber_bpsk_vs_qpsk.png
+```
+
+Both empirical curves land on the same theoretical line, within normal
+Monte Carlo scatter, no systematic gap between BPSK and QPSK the way
+there was a small, explainable gap for the truncated RRC filter in
+section 5.3. That's the expected result and confirms the Gray-coding
+argument in 6.1 empirically rather than leaving it as an assertion.
+
+```
+figures/qpsk_constellation.png
+```
+
+is the same channel at a single operating point (8 dB), 500 symbols,
+plotted as received I/Q pairs against the four ideal constellation
+points. Four visibly separated clouds, no noise-driven quadrant errors
+at this SNR, which is a visual sanity check that the constellation
+mapping, the complex noise, and the quadrant decision boundaries are all
+wired together correctly, independent of the BER numbers.
+
+### 6.4 So what does QPSK actually buy you
+
+Not free performance, the BER is identical. What's different is
+bandwidth for a fixed bit rate: since QPSK needs half as many symbols
+per second to carry the same number of bits per second, it occupies
+roughly half the spectrum BPSK would need for the same throughput at the
+same energy efficiency. That's the actual engineering tradeoff QPSK
+represents, and it's why higher-order schemes (16-QAM, and so on, later
+on the roadmap) exist at all: trading a widening BER penalty for
+progressively less bandwidth per bit.
