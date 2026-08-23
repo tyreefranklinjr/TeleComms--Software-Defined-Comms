@@ -1,4 +1,4 @@
-# Layered Link Simulator: From Raw Bits to a Verified Physical-Layer Waveform
+# Layered Link Simulator: From Raw Bits to a Verified Physical-Layer Waveform 
 
 A wireless link built bottom-up: bit encoding, custom framing with CRC
 error detection, two channel noise models, and BPSK with root-raised-cosine
