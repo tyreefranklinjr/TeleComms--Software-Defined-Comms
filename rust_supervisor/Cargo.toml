@@ -1,0 +1,15 @@
+# Cargo.toml
+#
+# Project file for the Rust supervisor. Lists the project name and its
+# dependencies:
+#   tokio  used for running the child process and timers concurrently.
+#   rand   used to randomly decide when to inject a simulated failure.
+
+[package]
+name = "sdr_supervisor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+rand = "0.8"
