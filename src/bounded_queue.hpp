@@ -20,12 +20,10 @@ class BoundedQueue {
 public:
     explicit BoundedQueue(std::size_t capacity) : capacity_(capacity) {}
 
-    // Adds an item to the queue. Blocks if the queue is already full.
     void Push(T item) {
         std::unique_lock<std::mutex> lock(mutex_);
 
         not_full_.wait(lock, [this] { return items_.size() < capacity_ || shutdown_; });
-
         if (shutdown_) return;
 
         items_.push_back(std::move(item));
@@ -38,11 +36,7 @@ public:
         std::unique_lock<std::mutex> lock(mutex_);
 
         not_empty_.wait(lock, [this] { return !items_.empty() || shutdown_; });
-
-        if (items_.empty()) {
-            return false;
-        }
-
+        if (items_.empty()) {return false;}
         *out_item = std::move(items_.front());
         items_.pop_front();
 
@@ -75,4 +69,4 @@ private:
     bool shutdown_ = false;
 };
 
-}  // namespace sdr
+}
