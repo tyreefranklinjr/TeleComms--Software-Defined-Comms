@@ -12,34 +12,39 @@
 
 #include "../src/simple_fft.hpp"
 
-int main() {
-    constexpr std::size_t kN = 1024;
-    constexpr std::size_t kExpectedBin = 32;
+using namespace std;
 
-    std::vector<sdr::Complex> signal;
+int main() {
+    constexpr size_t kN = 1024;
+    constexpr size_t kExpectedBin = 32;
+
+    vector<sdr::Complex> signal;
     signal.reserve(kN);
-    for (std::size_t n = 0; n < kN; ++n) {
+    for (size_t n = 0; n < kN; ++n) {
         double angle = 2.0 * M_PI * static_cast<double>(kExpectedBin) *
                        static_cast<double>(n) / static_cast<double>(kN);
-        signal.emplace_back(static_cast<float>(std::cos(angle)), 0.0f);
+        sdr::Complex sample;
+        sample.re = static_cast<float>(cos(angle));
+        sample.im = 0.0f;
+        signal.push_back(sample);
     }
 
-    std::vector<float> spectrum = sdr::MagnitudeSpectrum(signal);
+    vector<float> spectrum = sdr::MagnitudeSpectrum(signal);
 
     // Only the first half of the spectrum needs to be checked, since it
     // mirrors for a real-valued input.
-    std::size_t peak_bin = 0;
-    for (std::size_t i = 1; i < spectrum.size() / 2; ++i) {
+    size_t peak_bin = 0;
+    for (size_t i = 1; i < spectrum.size() / 2; ++i) {
         if (spectrum[i] > spectrum[peak_bin]) peak_bin = i;
     }
 
-    std::printf("Expected peak near bin %zu, found peak at bin %zu\n", kExpectedBin,
-                peak_bin);
+    printf("Expected peak near bin %zu, found peak at bin %zu\n", kExpectedBin,
+           peak_bin);
 
     if (peak_bin == kExpectedBin) {
-        std::printf("PASS\n");
+        printf("PASS\n");
         return 0;
     }
-    std::printf("FAIL\n");
+    printf("FAIL\n");
     return 1;
 }
