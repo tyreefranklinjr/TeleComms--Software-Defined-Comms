@@ -5,60 +5,81 @@
 // exact same input again, which is useful for repeatable testing.
 //
 // The file format is a flat sequence of 32-bit floats: I, Q, I, Q, and so on.
+//
+// This uses the plain C file functions (fopen, fwrite, fread, fclose)
+// instead of C++ file streams. They map directly to "open a file, write
+// some bytes, close the file," with no cast needed to write a float's raw
+// bytes.
 
 #pragma once
 
-#include <fstream>
+#include <cstdio>
 #include <string>
 #include <vector>
 
 #include "iq_simulator.hpp"
 
+using namespace std;
+
 namespace sdr {
 
 class IQRecorder {
 public:
-    explicit IQRecorder(const std::string& file_path)
-        : out_(file_path, std::ios::binary) {}
+    explicit IQRecorder(const string& file_path) {
+        file_ = fopen(file_path.c_str(), "wb");
+    }
 
-    bool IsOpen() const { return out_.is_open(); }
+    ~IQRecorder() {
+        if (file_ != nullptr) {
+            fclose(file_);
+        }
+    }
 
-    void WriteBlock(const std::vector<IQSample>& block) {
-        for (const IQSample& s : block) {
-            out_.write(reinterpret_cast<const char*>(&s.i), sizeof(float));
-            out_.write(reinterpret_cast<const char*>(&s.q), sizeof(float));
+    bool IsOpen() const { return file_ != nullptr; }
+
+    void WriteBlock(const vector<IQSample>& block) {
+        for (size_t i = 0; i < block.size(); ++i) {
+            fwrite(&block[i].i, sizeof(float), 1, file_);
+            fwrite(&block[i].q, sizeof(float), 1, file_);
         }
     }
 
 private:
-    std::ofstream out_;
+    FILE* file_ = nullptr;
 };
 
 class IQPlayer {
 public:
-    explicit IQPlayer(const std::string& file_path)
-        : in_(file_path, std::ios::binary) {}
+    explicit IQPlayer(const string& file_path) {
+        file_ = fopen(file_path.c_str(), "rb");
+    }
 
-    bool IsOpen() const { return in_.is_open(); }
+    ~IQPlayer() {
+        if (file_ != nullptr) {
+            fclose(file_);
+        }
+    }
+
+    bool IsOpen() const { return file_ != nullptr; }
 
     // Reads up to block_size samples. Returns fewer samples once the file
     // is exhausted, and an empty result when there is nothing left to read.
-    std::vector<IQSample> ReadBlock(std::size_t block_size) {
-        std::vector<IQSample> block;
+    vector<IQSample> ReadBlock(size_t block_size) {
+        vector<IQSample> block;
         block.reserve(block_size);
 
-        for (std::size_t n = 0; n < block_size; ++n) {
+        for (size_t n = 0; n < block_size; ++n) {
             IQSample s;
-            in_.read(reinterpret_cast<char*>(&s.i), sizeof(float));
-            in_.read(reinterpret_cast<char*>(&s.q), sizeof(float));
-            if (!in_) break;
+            size_t read_i = fread(&s.i, sizeof(float), 1, file_);
+            size_t read_q = fread(&s.q, sizeof(float), 1, file_);
+            if (read_i != 1 || read_q != 1) break;
             block.push_back(s);
         }
         return block;
     }
 
 private:
-    std::ifstream in_;
+    FILE* file_ = nullptr;
 };
 
 }  // namespace sdr
