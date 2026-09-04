@@ -52,12 +52,12 @@ public:
         return sample;
     }
 
+    // Returns a block of simulated IQ data to be read by the DSP pipeline
     vector<IQSample> NextBlock(size_t block_size) {
         vector<IQSample> block;
         block.reserve(block_size);
-        for (size_t n = 0; n < block_size; ++n) {
-            block.push_back(NextSample());
-        }
+        
+        for (size_t n = 0; n < block_size; n++) {block.push_back(NextSample());}
         return block;
     }
 
