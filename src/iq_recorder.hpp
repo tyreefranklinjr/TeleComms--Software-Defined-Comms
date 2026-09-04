@@ -1,16 +1,17 @@
-// iq_recorder.hpp
-//
-// Saves a stream of IQ samples to a file, and reads them back later. This
-// makes it possible to capture one specific run of data and replay the
-// exact same input again, which is useful for repeatable testing.
-//
-// The file format is a flat sequence of 32-bit floats: I, Q, I, Q, and so on.
-//
-// This uses the plain C file functions (fopen, fwrite, fread, fclose)
-// instead of C++ file streams. They map directly to "open a file, write
-// some bytes, close the file," with no cast needed to write a float's raw
-// bytes.
+/*iq_recorder.hpp
 
+Saves a stream of IQ samples to a file, and reads them back later. This
+makes it possible to capture one specific run of data and replay the
+exact same input again, which is useful for repeatable testing.
+
+The file format is a flat sequence of 32-bit floats: I, Q, I, Q, and so on.
+
+This uses the plain C file functions (fopen, fwrite, fread, fclose)
+instead of C++ file streams. They map directly to "open a file, write
+some bytes, close the file," with no cast needed to write a float's raw
+bytes.*/
+
+    
 #pragma once
 
 #include <cstdio>
