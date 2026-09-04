@@ -31,15 +31,14 @@ struct IQSample {
 
 class IQSimulator {
 public:
-    // sample_rate_hz: samples produced per second.
-    // signal_freq_hz: frequency of the simulated signal.
-    // noise_amplitude: strength of the random noise added to the signal.
+    // sample_rate_hz: samples produced per second
+    // signal_freq_hz: frequency of the simulated signal
+    // noise_amplitude: strength of the random noise added to the signal
     IQSimulator(double sample_rate_hz, double signal_freq_hz, float noise_amplitude)
         : sample_rate_hz_(sample_rate_hz),
           signal_freq_hz_(signal_freq_hz),
           noise_amplitude_(noise_amplitude) {}
 
-    // Produces the next IQ sample and advances the internal clock.
     IQSample NextSample() {
         const double phase = 2.0 * M_PI * signal_freq_hz_ * time_seconds_;
 
@@ -53,8 +52,6 @@ public:
         return sample;
     }
 
-    // Produces a block of samples at once. The DSP pipeline processes data
-    // in blocks rather than one sample at a time.
     vector<IQSample> NextBlock(size_t block_size) {
         vector<IQSample> block;
         block.reserve(block_size);
@@ -67,7 +64,9 @@ public:
     uint64_t SamplesProduced() const { return samples_produced_; }
 
 private:
-    // Returns one random value between -noise_amplitude_ and +noise_amplitude_.
+    // Returns a random value within the range [-x, x] then scales to the amplitude
+
+    // I do plan on using an additive white gaussian noise technique later..
     float RandomNoise() {
         float fraction = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         return (fraction * 2.0f - 1.0f) * noise_amplitude_;
@@ -81,4 +80,4 @@ private:
     uint64_t samples_produced_ = 0;
 };
 
-}  // namespace sdr
+}
