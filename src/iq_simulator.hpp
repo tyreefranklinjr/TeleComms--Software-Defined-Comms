@@ -23,7 +23,7 @@ using namespace std;
 
 namespace sdr {
 
-// One IQ sample. "i" and "q" are the real and imaginary parts of the signal.
+// One IQ sample. "i" and "q" are the real and imaginary parts of the signal
 struct IQSample {
     float i = 0.0f;
     float q = 0.0f;
