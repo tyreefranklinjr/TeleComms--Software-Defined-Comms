@@ -56,9 +56,7 @@ public:
     }
 
     ~IQPlayer() {
-        if (file_ != nullptr) {
-            fclose(file_);
-        }
+        if (file_ != nullptr) {fclose(file_);}
     }
 
     bool IsOpen() const { return file_ != nullptr; }
