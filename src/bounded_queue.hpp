@@ -19,7 +19,6 @@
 #include <deque>
 #include <mutex>
 #include <vector>
-
 #include "iq_simulator.hpp"
 
 using namespace std;
@@ -36,35 +35,23 @@ class BoundedQueue {
 public:
     explicit BoundedQueue(size_t capacity) : capacity_(capacity) {}
 
-    // Adds a block to the queue. Waits here if the queue is already full.
     void Push(IQBlock item) {
         unique_lock<mutex> lock(mutex_);
 
-        // Keep waiting while the queue is full and we have not been told to
-        // shut down. wait() releases the lock while it waits, and re-checks
-        // this condition each time it is woken up.
-        while (items_.size() >= capacity_ && !shutdown_) {
-            not_full_.wait(lock);
-        }
-
+        /* Adaptively checks and waits for the vector to leave the max
+        capacity state */
+        while (items_.size() >= capacity_ && !shutdown_) {not_full_.wait(lock);}
         if (shutdown_) return;
 
         items_.push_back(item);
         not_empty_.notify_one();
     }
 
-    // Removes and returns the next block. Returns false once the queue has
-    // been shut down and is empty, meaning there is nothing left to process.
     bool Pop(IQBlock* out_item) {
         unique_lock<mutex> lock(mutex_);
 
-        while (items_.empty() && !shutdown_) {
-            not_empty_.wait(lock);
-        }
-
-        if (items_.empty()) {
-            return false;
-        }
+        while (items_.empty() && !shutdown_) {not_empty_.wait(lock);}
+        if (items_.empty()) {return false;}
 
         *out_item = items_.front();
         items_.pop_front();
@@ -73,13 +60,12 @@ public:
         return true;
     }
 
-    // Signals that no more items will be pushed. Wakes any waiting threads
-    // so they can exit instead of waiting forever.
     void Shutdown() {
         {
             lock_guard<mutex> lock(mutex_);
             shutdown_ = true;
         }
+        
         not_empty_.notify_all();
         not_full_.notify_all();
     }
@@ -97,5 +83,4 @@ private:
     size_t capacity_;
     bool shutdown_ = false;
 };
-
-}  // namespace sdr
+}
