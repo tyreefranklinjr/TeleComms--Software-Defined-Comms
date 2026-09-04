@@ -1,19 +1,20 @@
-// simple_fft.hpp
-//
-// A basic FFT (Fast Fourier Transform) implementation. Given a block of
-// samples over time, the FFT reports which frequencies are present in that
-// block and how strong each one is.
-//
-// This is a standard radix-2 Cooley-Tukey FFT, written for clarity rather
-// than maximum speed. It only works on blocks whose size is a power of two
-// (256, 512, 1024, 4096, and so on). Production systems typically use a
-// dedicated library such as FFTW instead of a hand-written FFT.
-//
-// A complex number is written here as a plain struct with a real part and
-// an imaginary part, and plain functions (ComplexAdd, ComplexMultiply, and
-// so on) do the math. This avoids operator overloading, which lets you
-// write "a + b" for custom types but hides a function call behind that
-// symbol. Calling ComplexAdd(a, b) makes the same operation visible.
+/*simple_fft.hpp
+
+A basic FFT (Fast Fourier Transform) implementation. Given a block of
+samples over time, the FFT reports which frequencies are present in that
+block and how strong each one is.
+
+This is a standard radix-2 Cooley-Tukey FFT, written for clarity rather
+than maximum speed. It only works on blocks whose size is a power of two
+(256, 512, 1024, 4096, and so on). Production systems typically use a
+dedicated library such as FFTW instead of a hand-written FFT.
+
+A complex number is written here as a plain struct with a real part and
+an imaginary part, and plain functions (ComplexAdd, ComplexMultiply, and
+so on) do the math. This avoids operator overloading, which lets you
+write "a + b" for custom types but hides a function call behind that
+symbol. Calling ComplexAdd(a, b) makes the same operation visible.
+*/
 
 #pragma once
 
