@@ -16,17 +16,14 @@ class IQSim {
 
         IQSample NextSample() {
             const double phase = 2.0 * M_PI * sample_freq_ * time_sec_;
-            
             time_sec_ += 1.0 / sample_rate_;
             samples_produced_++;
-            
             return IQSample {cos(phase) + RandNoise(), sin(phase) + RandNoise()};
         };
         
         vector<IQSample> NextBlock(size_t block_size) {
             vector<IQSample> block;
             block.reserve(block_size);
-            
             for (size_t n = 0; n < block_size; n++) {block.push_back(NextSample());}
             return block;
         }
@@ -40,7 +37,6 @@ class IQSim {
         double sample_freq_;
         double sample_rate_;
         float noise_amplitude_;
-    
         double time_sec_ = 0.0;
         int samples_produced_ = 0;
 };
