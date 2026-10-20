@@ -1,0 +1,499 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\title{Design and Verification of an Instrumented\\
+Software-Defined Radio Processing Pipeline}
+
+\author{
+\IEEEauthorblockN{Tyree Franklin Jr.}
+\IEEEauthorblockA{
+Computer Science Student\\
+Western Governors University}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper examines a software-defined radio processing
+platform that combines a C++20 signal-processing core,
+a Rust process supervisor, and Python analysis tools.
+The architecture uses a bounded producer-consumer queue
+and an iterative radix-2 fast Fourier transform to process
+simulated in-phase and quadrature samples.
+Reanalysis of 1,500 archived measurements gives a mean
+processing latency of 0.111014 ms and an interpolated
+99th percentile of 0.167423 ms. Every logged block identifies
+frequency bin 20, consistent with the intended 5 kHz input.
+Source inspection also identifies simulator interface and
+serialization defects that prevent these historical results
+from validating the reviewed revision.
+The analysis defines the measurement boundary, explains
+the implications of backpressure and process restart,
+and specifies acceptance tests for a reproducible baseline.
+\end{abstract}
+
+\begin{IEEEkeywords}
+software-defined radio, digital signal processing,
+concurrency, performance measurement, software verification
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+An SDR processing application must coordinate sample
+production, buffering, numerical computation, and output.
+A fast transform alone does not establish correct system
+behavior. Queue delays, data representation, scheduling,
+and failure handling can affect the result independently
+of the signal-processing algorithm.
+
+The TeleComms--Software-Defined-Comms repository implements
+a hardware-independent platform for studying these
+interactions \cite{repo}. C++ provides the processing path,
+Rust manages the child process, and Python summarizes
+recorded measurements.
+
+This paper asks what the implementation and archived data
+establish about processing performance and what additional
+verification is needed. Its contributions are an analysis
+of the software architecture, a recalculation of the archived
+statistics, and a test specification tied to observed
+implementation risks.
+
+The work is a student engineering case study. It does not
+claim a new transform algorithm, flight qualification,
+or demonstrated hard real-time behavior.
+
+\section{Evidence and Method}
+
+The reviewed repository revision is:
+\begin{center}
+{\footnotesize
+\texttt{4c38af8eea230fa8f93ecf38ad5f0bb63f0bbbf5}}
+\end{center}
+
+The review covers the C++ source, Rust supervisor, Python
+analytics, CMake configuration, FFT test, and committed
+metrics CSV. The repository was accessed on October 20, 2026.
+
+Source inspection and archived measurements are treated
+as separate evidence. Statements about control flow and
+representation follow from the inspected code. Numerical
+results are recalculated from the committed CSV.
+Proposed tests are identified as future work.
+
+No C++ or Rust build, hardware experiment, or fault-injection
+campaign was executed for this analysis. The binary IQ
+recording was not numerically evaluated. Accordingly,
+the archived measurements are not presented as a reproduction
+of the reviewed revision.
+
+This approach follows the distinction between inspection
+and testing used in NASA's verification guidance
+\cite{verification}. Referencing that guidance does not
+establish compliance with NASA requirements.
+
+\section{Architecture}
+
+\subsection{Processing Path}
+
+A producer generates blocks of IQ samples and submits them
+to a bounded queue. A consumer removes each block, converts
+the samples to the FFT representation, computes the magnitude
+spectrum, and selects its largest bin.
+
+\begin{table}[t]
+\caption{Intended Live-Mode Configuration}
+\label{tab:config}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Nominal sample rate & 1,024,000 samples/s \\
+Tone frequency & 5,000 Hz \\
+Transform length & 4,096 samples \\
+Queue capacity & 16 blocks \\
+Run length & 1,500 blocks \\
+Noise amplitude parameter & 0.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The queue uses a mutex, two condition variables, and a
+\texttt{std::deque}. A producer waits when the queue is full.
+A consumer waits when it is empty. Both waits recheck their
+conditions after waking. Shutdown wakes waiting threads
+and allows the consumer to drain remaining items.
+
+Backpressure bounds queue occupancy by slowing the producer.
+This behavior is suitable for a cooperative simulator.
+It does not prove that a physical radio can deliver samples
+without loss when the application falls behind.
+
+The queue copies sample vectors on insertion and removal.
+These copies require \(O(N)\) work per operation for a block
+of \(N\) samples. Queue payload storage is \(O(QN)\) for
+capacity \(Q\). The latency recorder separately retains
+one observation per block, so its storage grows with run length.
+
+\subsection{Timing Model}
+
+The nominal block period is
+\begin{equation}
+T_b=\frac{N}{f_s}
+=\frac{4096}{1{,}024{,}000}
+=4\ \mathrm{ms}.
+\end{equation}
+
+The producer generates and enqueues a block before sleeping
+for \(T_b\). Generation, copying, blocking, and scheduler
+delay therefore add to the interval between releases.
+The configured sample rate describes the signal model,
+not a measured wall-clock acquisition rate.
+
+A periodic acquisition model would require absolute release
+times, recorded release jitter, and a policy for missed
+releases.
+
+\subsection{Process Supervision}
+
+The Rust supervisor launches the C++ executable using Tokio.
+A nonzero exit or an injected termination enters a retry
+path with a one-second delay. Failure injection is selected
+with a configured probability of 30\%, with a requested
+termination delay between 50 and 299 ms.
+
+The one-second delay is not a recovery measurement.
+Recovery also includes process startup and the time required
+to produce valid output.
+
+The constant \texttt{MAX\_RESTARTS} is five, but the counter
+is incremented before the limit check. Under repeated child
+failures, this permits five launches and four relaunches.
+The final status message can report six attempts.
+The implementation needs one explicit definition of whether
+the limit counts launches or retries.
+
+\section{Signal Processing}
+
+\subsection{Intended Input}
+
+The intended complex signal is
+\begin{equation}
+x[n]=e^{j2\pi f_0n/f_s}+\eta_I[n]+j\eta_Q[n].
+\end{equation}
+
+The noise components are generated by scaling
+\texttt{rand()} to a bounded interval. The implementation
+does not generate Gaussian noise.
+
+For independent uniform components on \([-a,a]\),
+the modeled complex noise power is \(2a^2/3\).
+With a unit-magnitude tone and \(a=0.3\), the corresponding
+analytical signal-to-noise ratio is
+\begin{equation}
+10\log_{10}\left(\frac{1}{2a^2/3}\right)
+\approx12.22\ \mathrm{dB}.
+\end{equation}
+This value describes the assumed model. It was not measured
+from the archived recording.
+
+\subsection{Transform and Peak Selection}
+
+The implementation computes the unnormalized DFT:
+\begin{equation}
+X[k]=\sum_{n=0}^{N-1}x[n]e^{-j2\pi kn/N}.
+\end{equation}
+
+An iterative radix-2 algorithm performs bit reversal followed
+by butterfly stages. The transform requires \(O(N\log_2N)\)
+arithmetic work. Magnitude calculation and peak selection
+each require \(O(N)\) work.
+
+For the intended configuration,
+\begin{equation}
+\Delta f=\frac{f_s}{N}=250\ \mathrm{Hz},
+\qquad
+k_0=\frac{f_0}{\Delta f}=20.
+\end{equation}
+
+An ideal unit-amplitude complex tone at bin 20 produces
+an unnormalized magnitude of 4,096 at that bin.
+This magnitude is not calibrated RF power or power spectral
+density.
+
+No window is applied. A bin-centered tone is therefore
+a favorable test case. Off-bin tones, negative frequencies,
+multiple tones, and varying amplitudes are needed to evaluate
+broader spectral behavior.
+
+\section{Performance Analysis}
+
+\subsection{Measurement Boundary}
+
+Live-mode timing starts after queue removal. It includes
+sample conversion, spectrum computation, and peak search.
+The spectrum function takes its argument by value, so the
+timed work also includes that argument copy.
+
+The measurement excludes sample generation, queue waiting,
+queue removal copies, CSV output, and console output.
+The appropriate term is \emph{processing latency}.
+It is neither FFT-only execution time nor end-to-end latency.
+
+For observation \(i\),
+\begin{equation}
+L_i=t_i^{\mathrm{stop}}-t_i^{\mathrm{start}}.
+\end{equation}
+
+\subsection{Archived Dataset}
+
+The CSV contains 1,500 observations with unique, contiguous
+block identifiers from 0 through 1,499. All observations
+were retained.
+
+The mean is
+\begin{equation}
+\overline{L}=\frac{1}{M}\sum_{i=1}^{M}L_i.
+\end{equation}
+
+For sorted observations, the interpolated percentile uses
+position \(h=p(M-1)\), interpolating between the adjacent
+values. The C++ summary instead selects the observation
+at index \(\lfloor0.99(M-1)\rfloor\).
+Table~\ref{tab:results} reports both conventions.
+
+\begin{table}[t]
+\caption{Recalculated Archived Results}
+\label{tab:results}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+Statistic & Value \\
+\midrule
+Observation count & 1,500 \\
+Mean & 0.111014 ms \\
+Median & 0.104865 ms \\
+Interpolated p99 & 0.167423 ms \\
+C++ convention p99 & 0.167409 ms \\
+Minimum & 0.088159 ms \\
+Maximum & 0.501117 ms \\
+Peak bin in every row & 20 \\
+Observations above 4 ms & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The interpolated p99 is approximately 4.19\% of the nominal
+block period. The maximum is approximately 12.53\%.
+These values show processing-time margin in the archived
+sample, within the stated measurement boundary.
+
+They do not establish a worst-case bound. The dataset lacks
+acquisition timestamps, hardware details, scheduler information,
+and an identified producing commit.
+
+The peak bin is 20 in every row, consistent with the intended
+5 kHz tone. This checks the recorded peak outputs against
+the nominal configuration; it does not verify all complex
+transform values.
+
+The blocks represent 6,144,000 samples, equivalent to six
+seconds of modeled signal time. Elapsed runtime was not
+established.
+
+\section{Source Findings}
+
+\subsection{Simulator Interface}
+
+The simulator header declares global types
+\texttt{IQSim} and \texttt{IQSample}.
+The pipeline expects \texttt{IQSimulator}, while the entry
+point also references \texttt{sdr::IQSimulator} and
+\texttt{sdr::IQSample}. Matching declarations are absent
+from the inspected source.
+
+The simulator constructor also declares frequency before
+sample rate, while callers pass sample rate before frequency.
+Correcting only the class name would leave this argument
+contract inconsistent.
+
+These findings prevent treating the archived CSV as evidence
+that the reviewed revision builds and runs successfully.
+They are static findings, not results from an executed compiler.
+
+\subsection{Recording Representation}
+
+IQ sample fields are declared as \texttt{double}.
+The recorder writes \texttt{sizeof(float)} bytes from each
+field's address. This copies part of a double representation;
+it does not convert the value to float32.
+
+The reader similarly writes float-sized byte sequences into
+double fields. Python interprets the recording as float32.
+The three components therefore lack a consistent numerical
+serialization contract.
+
+The repair should use explicit float32 conversions and
+float32 read temporaries. The format also needs a defined
+byte order, sample rate, version, and malformed-input policy.
+
+\subsection{FFT Input Length}
+
+The FFT assumes a power-of-two length without checking it.
+Replay can return a partial final block. An unsupported
+length can violate butterfly indexing assumptions and lead
+to out-of-bounds access.
+
+Replay must reject unsupported lengths or apply a documented
+padding policy before calling the transform.
+
+\subsection{Delivery and Recovery}
+
+The consumer increments the delivered counter, but the
+inspected pipeline does not invoke the dropped-block counter.
+The dashboard displays a literal zero for dropped blocks.
+
+Contiguous CSV identifiers establish completeness of the
+logged range. They do not measure upstream sample loss.
+Delivery verification requires separate counts for received,
+accepted, processed, rejected, and pending blocks.
+
+Restart also does not imply state recovery. The supervisor
+does not restore input offsets or checkpoints, and its
+ordinary waiting path has no progress timeout for a stalled
+child. File-open errors in record and replay modes can return
+without a nonzero process exit, obscuring failure from the
+supervisor.
+
+\subsection{Test Coverage and Provenance}
+
+The supplied FFT test checks the positive-frequency peak
+of a 1,024-point real cosine at bin 32. It is a useful smoke
+test, but does not cover numerical error, recording fidelity,
+queue shutdown, or recovery.
+
+The README describes a CI directory that is absent from
+the reviewed tree. CI execution is not established by this
+snapshot. The CSV also lacks compiler, CPU, operating-system,
+seed, and producer-revision metadata.
+
+\section{Verification Plan}
+
+The following are proposed acceptance criteria.
+They have not been executed as part of this paper.
+
+\subsection{Build Reproduction}
+
+After interface corrections, a clean checkout shall build
+and pass its CMake tests. Each benchmark shall record the
+commit, compiler, flags, dependencies, operating system,
+CPU, command, seed, and output hashes.
+
+\subsection{Numerical Correctness}
+
+Test lengths 64, 256, 1,024, and 4,096 against an independent
+double-precision reference. Inputs shall include an impulse,
+DC, positive and negative complex tones, off-bin tones,
+and seeded random samples.
+
+For nonzero reference output, the proposed tolerance is
+\begin{equation}
+\frac{\|X_{\mathrm{test}}-X_{\mathrm{ref}}\|_2}
+{\|X_{\mathrm{ref}}\|_2}\leq10^{-4}.
+\end{equation}
+Zero input shall be tested separately. Unsupported lengths
+shall be rejected before transform indexing.
+
+\subsection{Recording Fidelity}
+
+Known finite values shall survive recording and replay
+with values equal to the specified float32 conversion.
+C++ and Python shall decode identical fixtures.
+
+Tests shall cover empty files, truncated sample pairs,
+invalid metadata, and I/O failure. Operational failures
+shall produce nonzero process exit codes.
+
+\subsection{Queue Behavior}
+
+Tests shall confirm bounded occupancy, ordered processing,
+and exactly-once handling of accepted blocks during normal
+completion. Shutdown shall wake a producer blocked on a full
+queue and a consumer blocked on an empty queue.
+Zero capacity shall be rejected.
+
+At normal completion,
+\begin{equation}
+B_{\mathrm{accepted}}=B_{\mathrm{processed}}.
+\end{equation}
+Failure cases shall additionally account for discarded
+and pending blocks.
+
+\subsection{Timing and Recovery}
+
+Following correctness verification, collect at least ten
+independently launched runs per configuration, each with
+at least 15,000 blocks. Declare the warm-up policy and retain
+the raw observations.
+
+Measure processing latency, queue residence, end-to-end
+latency, release jitter, occupancy, and deadline misses.
+Include nominal load, CPU contention, and consumer overload.
+
+A proposed nominal target is p99 processing latency below
+4 ms. Passing this target would establish an empirical
+processing criterion, not a hard real-time guarantee.
+
+Recovery tests shall deterministically exercise normal exit,
+nonzero exit, launch failure, forced termination, and stalled
+execution. Measure recovery from fault occurrence to the first
+valid output of the replacement process. Verify exact launch
+counts at retry exhaustion.
+
+\section{Conclusion}
+
+The project combines numerical processing, concurrent
+buffering, process supervision, and offline analysis in
+a compact SDR-oriented codebase. Its archived data show
+0.111014 ms mean processing latency and 0.167423 ms p99
+latency, with consistent detection of the intended tone bin.
+
+The reviewed source cannot yet reproduce those claims
+without correcting simulator interfaces and IQ serialization.
+Those corrections, followed by the specified verification
+tests, would establish a stronger basis for performance
+comparison and eventual hardware integration.
+
+\section*{Development Disclosure}
+
+The repository identifies AI assistance in the FFT test
+and Python analytics. AI assistance was also used in preparing
+this manuscript and recalculating the archived statistics.
+The author should verify the final text and accept
+responsibility for its claims before distribution.
+
+\begin{thebibliography}{00}
+
+\bibitem{repo}
+T. Franklin Jr.,
+``TeleComms--Software-Defined-Comms,''
+GitHub repository, revision
+4c38af8eea230fa8f93ecf38ad5f0bb63f0bbbf5,
+accessed Oct. 20, 2026. [Online]. Available:
+\url{https://github.com/tyreefranklinjr/TeleComms--Software-Defined-Comms/tree/4c38af8eea230fa8f93ecf38ad5f0bb63f0bbbf5}
+
+\bibitem{verification}
+NASA, ``SWE-028: Verification Planning,''
+NASA Software Engineering Handbook,
+accessed Oct. 20, 2026. [Online]. Available:
+\url{https://swehb.nasa.gov/spaces/7150/pages/16450576/SWE-028+-+Verification+Planning}
+
+\end{thebibliography}
+
+\end{document}
